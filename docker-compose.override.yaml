@@ -104,11 +104,11 @@ services:
     restart: always
 
   # ------------------------------------------------------------------
-  # Dashboards (Grafana 13)
+  # Dashboards (Grafana)
   # ------------------------------------------------------------------
 
   grafana:
-    image: grafana/grafana:13.0.0
+    image: grafana/grafana:latest
     ports:
       - "3000:3000"
     environment:
