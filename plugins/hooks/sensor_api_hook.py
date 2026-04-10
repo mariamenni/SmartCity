@@ -21,35 +21,41 @@ class SensorAPIHook(HttpHook):
         response.raise_for_status()
         return response.json()
 
-    # ---- public API ----
+    # ---- public API  (smart-cities-api /api/v1) ----
 
     def health_check(self) -> bool:
         try:
             data = self._api_get("/health")
-            return data.get("status") == "ok"
+            return data.get("status") == "healthy"
         except Exception:
             return False
 
-    def get_sensors(self) -> list[dict]:
-        return self._api_get("/sensors")
-
-    def get_locations(self) -> list[dict]:
-        return self._api_get("/locations")
-
-    def get_measurements(
+    def get_sensors(
         self,
-        since: str | None = None,
         sensor_type: str | None = None,
+        status: str | None = None,
         limit: int | None = None,
     ) -> list[dict]:
         params: dict[str, str] = {}
-        if since:
-            params["since"] = since
         if sensor_type:
             params["type"] = sensor_type
+        if status:
+            params["status"] = status
         if limit is not None:
             params["limit"] = str(limit)
-        return self._api_get("/measurements", params=params)
+        return self._api_get("/api/v1/sensors", params=params)
 
-    def get_latest_measurements(self) -> list[dict]:
-        return self._api_get("/measurements/latest")
+    def get_sensor(self, sensor_id: int) -> dict:
+        return self._api_get(f"/api/v1/sensors/{sensor_id}")
+
+    def get_readings(self, sensor_id: int, limit: int | None = None) -> list[dict]:
+        params: dict[str, str] = {}
+        if limit is not None:
+            params["limit"] = str(limit)
+        return self._api_get(f"/api/v1/readings/{sensor_id}", params=params)
+
+    def get_metrics(self) -> dict:
+        return self._api_get("/api/v1/metrics")
+
+    def get_metrics_summary(self) -> dict:
+        return self._api_get("/api/v1/metrics/summary")
