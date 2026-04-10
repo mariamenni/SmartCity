@@ -26,7 +26,7 @@ class SensorAPIHook(HttpHook):
     def health_check(self) -> bool:
         try:
             data = self._api_get("/health")
-            return data.get("status") == "healthy"
+            return data.get("status") == "ok"
         except Exception:
             return False
 
@@ -36,12 +36,19 @@ class SensorAPIHook(HttpHook):
     def get_locations(self) -> list[dict]:
         return self._api_get("/locations")
 
-    def get_measurements(self, start_ts: str | None = None, end_ts: str | None = None) -> list[dict]:
+    def get_measurements(
+        self,
+        since: str | None = None,
+        sensor_type: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
         params: dict[str, str] = {}
-        if start_ts:
-            params["start"] = start_ts
-        if end_ts:
-            params["end"] = end_ts
+        if since:
+            params["since"] = since
+        if sensor_type:
+            params["type"] = sensor_type
+        if limit is not None:
+            params["limit"] = str(limit)
         return self._api_get("/measurements", params=params)
 
     def get_latest_measurements(self) -> list[dict]:

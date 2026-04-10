@@ -77,10 +77,8 @@ def smartcity_hook_health_check():
         from hooks.sensor_api_hook import SensorAPIHook
 
         hook = SensorAPIHook()
-        now = datetime.utcnow()
-        start = (now - timedelta(minutes=15)).isoformat()
-        end = now.isoformat()
-        measurements = hook.get_measurements(start_ts=start, end_ts=end)
+        since = (datetime.utcnow() - timedelta(minutes=15)).isoformat()
+        measurements = hook.get_measurements(since=since)
         print(f"{len(measurements)} mesures récupérées (fenêtre 15 min)")
         if measurements:
             sample = measurements[0]

@@ -35,7 +35,7 @@ def hook():
 
 class TestHealthCheck:
     def test_healthy(self, hook):
-        with patch.object(hook, "run", return_value=_mock_response({"status": "healthy"})):
+        with patch.object(hook, "run", return_value=_mock_response({"status": "ok"})):
             assert hook.health_check() is True
 
     def test_unhealthy(self, hook):
@@ -84,18 +84,22 @@ class TestGetMeasurements:
             result = hook.get_measurements()
             assert result == data
 
-    def test_with_start_ts(self, hook):
+    def test_with_since(self, hook):
         with patch.object(hook, "run", return_value=_mock_response([])) as m:
-            hook.get_measurements(start_ts="2025-01-01T00:00:00")
+            hook.get_measurements(since="2025-01-01T00:00:00")
             m.assert_called_once()
             call_kwargs = m.call_args
             data = call_kwargs[1].get("data", call_kwargs[0][1] if len(call_kwargs[0]) > 1 else {})
-            assert "start" in data
+            assert "since" in data
 
-    def test_with_both_params(self, hook):
+    def test_with_type_and_limit(self, hook):
         with patch.object(hook, "run", return_value=_mock_response([])) as m:
-            hook.get_measurements(start_ts="2025-01-01", end_ts="2025-01-02")
+            hook.get_measurements(sensor_type="air_quality_pm25", limit=50)
             m.assert_called_once()
+            call_kwargs = m.call_args
+            data = call_kwargs[1].get("data", call_kwargs[0][1] if len(call_kwargs[0]) > 1 else {})
+            assert data.get("type") == "air_quality_pm25"
+            assert data.get("limit") == "50"
 
     def test_empty_result(self, hook):
         with patch.object(hook, "run", return_value=_mock_response([])):
