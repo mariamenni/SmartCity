@@ -15,13 +15,27 @@
 # specific language governing permissions and limitations
 # under the License.
 
-# Base officielle Apache Airflow 3.1.8 pour le projet.
-# Ne pas modifier ce fichier. Toutes les adaptations du groupe vont dans
-# docker-compose.override.yaml.
+# Base officielle Apache Airflow 3.2.0 (derniere version stable, avril 2026).
+# Ne pas modifier ce fichier directement.
+# Toutes les adaptations du groupe vont dans docker-compose.override.yaml.
+#
+# Variables supportees :
+#
+# AIRFLOW_IMAGE_NAME           - Image Docker Airflow.
+#                                Defaut: apache/airflow:3.2.0
+# AIRFLOW_UID                  - UID de l'utilisateur dans les conteneurs Airflow.
+#                                Defaut: 50000
+# AIRFLOW_PROJ_DIR             - Chemin de base pour les volumes.
+#                                Defaut: .
+# FERNET_KEY                   - Cle de chiffrement Airflow (obligatoire).
+#                                Generer avec : python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# _AIRFLOW_WWW_USER_USERNAME   - Nom d'utilisateur admin. Defaut: airflow
+# _AIRFLOW_WWW_USER_PASSWORD   - Mot de passe admin. Defaut: airflow
+# _PIP_ADDITIONAL_REQUIREMENTS - Requirements PIP supplementaires. Defaut: ''
 ---
 x-airflow-common:
   &airflow-common
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.1.8}
+  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.2.0}
   env_file:
     - ${ENV_FILE_PATH:-.env}
   environment:
@@ -29,9 +43,9 @@ x-airflow-common:
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
     AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
-    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY:-}
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
@@ -70,6 +84,8 @@ services:
     restart: always
 
   redis:
+    # Redis est limite a 7.2-bookworm en raison du changement de licence.
+    # https://redis.io/blog/redis-adopts-dual-source-available-licensing/
     image: redis:7.2-bookworm
     expose:
       - 6379

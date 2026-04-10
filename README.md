@@ -10,15 +10,16 @@
 
 ## Objectif
 
-Construire un projet SmartCity IoT orchestre avec Airflow 3.1.8, sans ressource cloud, avec ingestion batch, consumer minute, alerting, stockage PostgreSQL 16 pour le DWH et MinIO pour le stockage objet.
+Construire un projet SmartCity IoT orchestre avec Airflow 3.2.0, sans ressource cloud, avec ingestion batch, consumer minute, alerting, stockage TimescaleDB pour le DWH et MinIO pour le stockage objet.
 
 ## Contraintes techniques obligatoires
 
 - Docker Compose uniquement
-- Airflow 3.1.8 comme orchestrateur
+- Airflow 3.2.0 comme orchestrateur
 - Python 3.12 pour tous les DAGs
-- PostgreSQL 16 pour le DWH
-- MinIO pour le stockage objet compatible S3
+- TimescaleDB 2.26.2 (PostgreSQL 18) pour le DWH time-series
+- MinIO RELEASE.2025-09-07 pour le stockage objet compatible S3
+- Grafana 13.0.0 pour les dashboards
 - tests pytest avec au moins 3 tests qui passent
 - idempotence obligatoire
 - `catchup=False` et `max_active_runs=1` sur tous les DAGs de production
@@ -89,14 +90,19 @@ smartcity-airflow-groupe5/
 ## Instructions de lancement
 
 ```bash
+cp .env.example .env
 docker compose up -d
 ```
 
-Interface Airflow :
+Interfaces disponibles apres demarrage (attendre 60s) :
 
-- URL : <http://localhost:8080>
-- utilisateur : airflow
-- mot de passe : airflow
+| Service          | URL                       | Identifiants          |
+|------------------|---------------------------|-----------------------|
+| Airflow          | http://localhost:8080     | airflow / airflow     |
+| Grafana          | http://localhost:3000     | admin / admin         |
+| MinIO Console    | http://localhost:9001     | minio_admin / minio_password_2026 |
+| Sensor Simulator | http://localhost:8000     | -                     |
+| TimescaleDB      | localhost:5433            | smartcity_user / smartcity_password |
 
 ## DAGs et roles
 
@@ -145,7 +151,7 @@ Minimum attendu :
 ## Choix techniques
 
 - Docker Compose est utilise pour respecter la contrainte locale du projet
-- Airflow 3.1.8 est conserve comme base de reference du kit fourni
+- Airflow 3.2.0 (derniere version stable officielle)
 - PostgreSQL 16 est retenu pour le DWH car il fait partie des contraintes communes
 - MinIO est retenu pour fournir un stockage objet local compatible S3
 - aucun usage de Kafka dans cette version du projet

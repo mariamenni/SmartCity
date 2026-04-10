@@ -14,8 +14,19 @@ class SensorAPIHook(HttpHook):
     def __init__(self, sensor_api_conn_id: str = default_conn_name, method: str = "GET") -> None:
         super().__init__(method=method, http_conn_id=sensor_api_conn_id)
 
-    def get_sensors(self) -> Any:
+    def get_sensors(
+        self,
+        sensor_type: str | None = None,
+        status: str | None = None,
+        limit: int = 100,
+    ) -> Any:
+        # GET /api/v1/sensors?type=<sensor_type>&status=<status>&limit=<limit>
         raise NotImplementedError("TODO Frederic: implement get_sensors()")
 
-    def get_measurements(self, start_ts: str | None = None, end_ts: str | None = None) -> Any:
+    def get_measurements(self, sensor_id: int, limit: int = 100) -> Any:
+        # GET /api/v1/readings/{sensor_id}?limit=<limit>
         raise NotImplementedError("TODO Frederic: implement get_measurements()")
+
+    def get_metrics(self) -> Any:
+        # GET /api/v1/metrics
+        raise NotImplementedError("TODO Frederic: implement get_metrics()")
