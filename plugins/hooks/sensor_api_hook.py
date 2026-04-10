@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from airflow.providers.http.hooks.http import HttpHook
@@ -53,6 +54,41 @@ class SensorAPIHook(HttpHook):
         if limit is not None:
             params["limit"] = str(limit)
         return self._api_get(f"/api/v1/readings/{sensor_id}", params=params)
+
+    def get_measurements(
+        self,
+        since: datetime | None = None,
+        sensor_type: str | None = None,
+    ) -> list[dict]:
+        """Récupère les mesures de tous les capteurs.
+
+        Combine get_sensors() + get_readings() pour fournir l'interface
+        exigée par le cahier des charges §9.3.
+        """
+        sensors = self.get_sensors(sensor_type=sensor_type)
+        measurements: list[dict] = []
+        for sensor in sensors:
+            sid = sensor.get("id")
+            if sid is None:
+                continue
+            readings = self.get_readings(sid)
+            for r in readings:
+                if since is not None:
+                    ts_str = r.get("timestamp") or r.get("ts")
+                    if ts_str:
+                        try:
+                            ts = datetime.fromisoformat(
+                                ts_str.replace("Z", "+00:00")
+                            )
+                            since_aware = since if since.tzinfo else since.replace(
+                                tzinfo=ts.tzinfo
+                            )
+                            if ts < since_aware:
+                                continue
+                        except (ValueError, TypeError):
+                            pass
+                measurements.append(r)
+        return measurements
 
     def get_metrics(self) -> dict:
         return self._api_get("/api/v1/metrics")

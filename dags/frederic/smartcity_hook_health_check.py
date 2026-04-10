@@ -6,22 +6,23 @@
 #   1. health_check()              → vérifie que l'API est joignable
 #   2. fetch_sensors()             → récupère la liste des capteurs
 #   3. fetch_readings()            → récupère les readings d'un capteur
-#   4. fetch_metrics()             → récupère les métriques de la ville
-#   5. report()                    → log un résumé pour validation en UI
+#   4. fetch_measurements()        → récupère les mesures (méthode §9.3)
+#   5. fetch_metrics()             → récupère les métriques de la ville
+#   6. report()                    → log un résumé pour validation en UI
 #
 # Schedule : @daily (ou déclenchement manuel pour la démo)
 # Connexion requise : sensor_api (AIRFLOW_CONN_SENSOR_API)
 # =============================================================================
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from airflow.sdk import dag, task
 
 
 @dag(
     dag_id="smartcity_hook_health_check",
-    description="P1 — Validation du SensorAPIHook (health, sensors, readings, metrics)",
+    description="P1 — Validation du SensorAPIHook (health, sensors, readings, measurements, metrics)",
     schedule="@daily",
     start_date=datetime(2025, 1, 1),
     catchup=False,
@@ -77,6 +78,19 @@ def smartcity_hook_health_check():
         return len(readings)
 
     @task()
+    def fetch_measurements() -> int:
+        """Récupère les mesures via get_measurements() — méthode §9.3 du cahier des charges."""
+        from hooks.sensor_api_hook import SensorAPIHook
+
+        hook = SensorAPIHook()
+        since = datetime.now(tz=timezone.utc) - timedelta(hours=1)
+        measurements = hook.get_measurements(since=since)
+        print(f"{len(measurements)} mesures récupérées via get_measurements(since={since.isoformat()})")
+        for m in measurements[:5]:
+            print(f"   sensor={m.get('sensor_id')} value={m.get('value')} {m.get('unit', '')}")
+        return len(measurements)
+
+    @task()
     def fetch_metrics() -> dict:
         """Récupère les métriques de la ville via le Hook."""
         from hooks.sensor_api_hook import SensorAPIHook
@@ -95,6 +109,7 @@ def smartcity_hook_health_check():
         is_healthy: bool,
         sensors: list[dict],
         nb_readings: int,
+        nb_measurements: int,
         metrics: dict,
     ) -> None:
         """Log un résumé de validation pour la démo soutenance."""
@@ -109,6 +124,7 @@ def smartcity_hook_health_check():
         print(f"  Capteurs actifs  : {active}")
         print(f"  Capteurs inactifs: {inactive}")
         print(f"  Readings testés  : {nb_readings}")
+        print(f"  Measurements     : {nb_measurements}")
         print(f"  Temp moyenne     : {metrics.get('average_temperature')}")
         print("=" * 60)
         print("  -> Hook validé, prêt pour P2/P3/P4/P5")
@@ -118,11 +134,13 @@ def smartcity_hook_health_check():
     ok = health_check()
     sensors_data = fetch_sensors()
     nb = fetch_readings(sensors_data)
+    nb_meas = fetch_measurements()
     city_metrics = fetch_metrics()
     report(
         is_healthy=ok,
         sensors=sensors_data,
         nb_readings=nb,
+        nb_measurements=nb_meas,
         metrics=city_metrics,
     )
 

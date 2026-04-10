@@ -28,7 +28,7 @@ def _stub_airflow() -> None:
     """Injecte des faux modules airflow dans sys.modules si Airflow
     n'est pas installé (exécution locale sans virtualenv Airflow)."""
     try:
-        import airflow  # noqa: F401
+        import airflow  
         return  # Airflow est installé, pas besoin de stubs
     except ImportError:
         pass

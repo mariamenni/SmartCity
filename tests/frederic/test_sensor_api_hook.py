@@ -1,4 +1,4 @@
-"""Tests unitaires — SensorAPIHook (Personne 1 — Frédéric).
+"""Tests unitaires — SensorAPIHook (Frédéric).
 
 11 tests couvrant : health_check, get_sensors, get_sensor, get_readings,
 get_metrics, get_metrics_summary, et gestion d'erreur.
@@ -121,6 +121,42 @@ class TestGetMetricsSummary:
         with patch.object(hook, "run", return_value=_mock_response(data)):
             result = hook.get_metrics_summary()
             assert "summary" in result
+
+
+# ---- get_measurements ----
+
+class TestGetMeasurements:
+    def test_returns_combined_readings(self, hook):
+        sensors = [{"id": 1, "name": "S1", "type": "temperature", "status": "active"}]
+        readings = [{"sensor_id": 1, "value": 23.5, "unit": "°C", "timestamp": "2026-04-10T12:00:00Z"}]
+        with patch.object(hook, "get_sensors", return_value=sensors), \
+             patch.object(hook, "get_readings", return_value=readings):
+            result = hook.get_measurements()
+            assert len(result) == 1
+            assert result[0]["value"] == 23.5
+
+    def test_filters_by_type(self, hook):
+        with patch.object(hook, "get_sensors", return_value=[]) as m_sensors, \
+             patch.object(hook, "get_readings", return_value=[]):
+            hook.get_measurements(sensor_type="temperature")
+            m_sensors.assert_called_once_with(sensor_type="temperature")
+
+    def test_filters_by_since(self, hook):
+        from datetime import datetime, timezone
+        sensors = [{"id": 1, "name": "S1", "type": "temperature", "status": "active"}]
+        old_reading = {"sensor_id": 1, "value": 10.0, "unit": "°C", "timestamp": "2026-04-10T08:00:00Z"}
+        new_reading = {"sensor_id": 1, "value": 25.0, "unit": "°C", "timestamp": "2026-04-10T14:00:00Z"}
+        with patch.object(hook, "get_sensors", return_value=sensors), \
+             patch.object(hook, "get_readings", return_value=[old_reading, new_reading]):
+            since = datetime(2026, 4, 10, 12, 0, 0, tzinfo=timezone.utc)
+            result = hook.get_measurements(since=since)
+            assert len(result) == 1
+            assert result[0]["value"] == 25.0
+
+    def test_empty_sensors(self, hook):
+        with patch.object(hook, "get_sensors", return_value=[]):
+            result = hook.get_measurements()
+            assert result == []
 
 
 # ---- error ----
