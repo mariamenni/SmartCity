@@ -95,20 +95,20 @@ services:
       context: ./sensor-simulator
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "8100:8000"
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/sensors')"]
       interval: 15s
       retries: 3
       start_period: 5s
     restart: always
 
   # ------------------------------------------------------------------
-  # Dashboards (Grafana 13)
+  # Dashboards (Grafana latest)
   # ------------------------------------------------------------------
 
   grafana:
-    image: grafana/grafana:13.0.0
+    image: grafana/grafana:latest
     ports:
       - "3000:3000"
     environment:
