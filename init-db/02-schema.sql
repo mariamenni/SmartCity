@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS fact_alert (
     sensor_id  VARCHAR(50)   NOT NULL REFERENCES dim_sensor(sensor_id),
     severity   VARCHAR(20)   NOT NULL CHECK (severity IN ('warning', 'critical')),
     value      DECIMAL(10,3) NOT NULL,
-    threshold  DECIMAL(10,3) NOT NULL
+    threshold  DECIMAL(10,3) NOT NULL,
+    UNIQUE (ts, sensor_id, severity)
 );
 
 CREATE INDEX IF NOT EXISTS idx_fact_alert_ts
