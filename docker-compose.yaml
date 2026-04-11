@@ -240,3 +240,4 @@ services:
 
 volumes:
   postgres-db-volume:
+  - ./plugins:/opt/airflow/plugins
