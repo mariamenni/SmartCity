@@ -1,0 +1,115 @@
+{
+  "uid": "smartcity-overview",
+  "title": "SmartCity — CSU Overview",
+  "tags": ["smartcity"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Qualité de l'air (time series)",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 15,
+            "pointSize": 5,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+          "rawSql": "SELECT\n  time_bucket('15 minutes', fm.measured_at) AS time,\n  ds.sensor_name,\n  AVG(fm.value) AS value\nFROM fact_measurement fm\nJOIN dim_sensor ds ON ds.sensor_id = fm.sensor_id\nWHERE ds.sensor_type = 'air_quality'\n  AND fm.measured_at >= $__timeFrom()\n  AND fm.measured_at < $__timeTo()\nGROUP BY 1, 2\nORDER BY 1",
+          "format": "time_series"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Trafic par emplacement (bar chart)",
+      "type": "barchart",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 10 },
+      "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "showValue": "auto",
+        "groupWidth": 0.7,
+        "barWidth": 0.9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+          "rawSql": "SELECT\n  dl.district AS location,\n  AVG(fm.value)::numeric(10,2) AS avg_traffic\nFROM fact_measurement fm\nJOIN dim_sensor ds ON ds.sensor_id = fm.sensor_id\nJOIN dim_location dl ON dl.location_id = ds.location_id\nWHERE ds.sensor_type = 'traffic'\n  AND fm.measured_at >= $__timeFrom()\n  AND fm.measured_at < $__timeTo()\nGROUP BY 1\nORDER BY 2 DESC",
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Alertes actives",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 10 },
+      "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "severity" },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "critical": { "color": "red", "text": "CRITIQUE" } } },
+                  { "type": "value", "options": { "warning": { "color": "orange", "text": "AVERTISSEMENT" } } },
+                  { "type": "value", "options": { "info": { "color": "blue", "text": "INFO" } } }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "created_at", "desc": true }]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+          "rawSql": "SELECT\n  fa.alert_id,\n  ds.sensor_name,\n  dl.district,\n  fa.severity,\n  fa.message,\n  fa.created_at\nFROM fact_alert fa\nJOIN dim_sensor ds ON ds.sensor_id = fa.sensor_id\nJOIN dim_location dl ON dl.location_id = ds.location_id\nWHERE fa.resolved_at IS NULL\nORDER BY fa.created_at DESC\nLIMIT 50",
+          "format": "table"
+        }
+      ]
+    }
+  ]
+}

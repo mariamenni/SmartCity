@@ -1,0 +1,101 @@
+---
+# Toutes les adaptations du groupe doivent etre faites ici.
+# Ne pas modifier docker-compose.yaml (base officielle Airflow).
+
+x-smartcity-common-env: &smartcity-common-env
+  AIRFLOW_CONN_SENSOR_API: ${AIRFLOW_CONN_SENSOR_API:-http://sensor-simulator:5000}
+  AIRFLOW_CONN_SMARTCITY_TIMESCALEDB: ${AIRFLOW_CONN_SMARTCITY_TIMESCALEDB:-postgresql://smartcity_user:smartcity_password@timescaledb:5432/smartcity}
+  AIRFLOW_CONN_MINIO_LOCAL: ${AIRFLOW_CONN_MINIO_LOCAL:-aws://minio_admin:minio_password_2026@?endpoint_url=http%3A%2F%2Fminio%3A9000&region_name=us-east-1}
+  _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-apache-airflow-providers-postgres apache-airflow-providers-amazon apache-airflow-providers-http httpx requests boto3 psycopg2-binary}
+
+services:
+  airflow-apiserver:
+    environment:
+      <<: *smartcity-common-env
+
+  airflow-scheduler:
+    environment:
+      <<: *smartcity-common-env
+
+  airflow-dag-processor:
+    environment:
+      <<: *smartcity-common-env
+
+  airflow-worker:
+    environment:
+      <<: *smartcity-common-env
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/tests:/opt/airflow/tests:ro
+
+  airflow-triggerer:
+    environment:
+      <<: *smartcity-common-env
+
+  airflow-init:
+    environment:
+      <<: *smartcity-common-env
+
+  timescaledb:
+    image: timescale/timescaledb:2.26.2-pg18
+    environment:
+      POSTGRES_USER: ${TIMESCALEDB_USER:-smartcity_user}
+      POSTGRES_PASSWORD: ${TIMESCALEDB_PASSWORD:-smartcity_password}
+      POSTGRES_DB: ${TIMESCALEDB_DB:-smartcity}
+    ports:
+      - "5433:5432"
+    volumes:
+      - tsdb-data:/var/lib/postgresql/data
+      - ${AIRFLOW_PROJ_DIR:-.}/init-db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "smartcity_user", "-d", "smartcity"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+    restart: always
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_password_2026}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      retries: 3
+      start_period: 10s
+    restart: always
+
+  sensor-simulator:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 15s
+      retries: 3
+      start_period: 5s
+    restart: always
+
+  grafana:
+    image: grafana/grafana:13.0.0-24165874688
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: always
+
+volumes:
+  tsdb-data:
+  minio-data:
+  grafana-data:
