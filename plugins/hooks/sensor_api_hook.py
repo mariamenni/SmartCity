@@ -18,17 +18,23 @@ class SensorAPIHook(HttpHook):
         response = self.run(
             endpoint=endpoint,
             headers={"Accept": "application/json"},
-            extra_options={},
-            request_kwargs={"params": params or {}},
+            data=None,
+            extra_options={
+                "timeout": 10,
+                "params": params or {}
+            },
+
         )
         response.raise_for_status()
         return response.json()
 
     def health_check(self) -> bool:
         try:
-            data = self._api_get("/health")
+            data = self._api_get("health")
+            print("DEBUG SENSOR RESPONSE:", data)
             return data.get("status") == "ok"
         except Exception:
+            print("ERROR SENSOR HOOK:", e)
             return False
 
     def get_sensors(self, active: bool | None = None) -> list[dict]:
