@@ -31,7 +31,7 @@ scrape_configs:
     static_configs:
       - targets: ["statsd-exporter:9102"]
 
-  # Décommentez ce bloc quand Kafka est actif (J2)
-  # - job_name: kafka
-  #   static_configs:
-  #     - targets: ["kafka-exporter:9308"]
+  # Actif quand docker-compose.kafka.yaml est inclus
+  - job_name: kafka
+    static_configs:
+      - targets: ["kafka-exporter:9308"]

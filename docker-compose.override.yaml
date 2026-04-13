@@ -6,7 +6,12 @@ x-smartcity-common-env: &smartcity-common-env
   AIRFLOW_CONN_SENSOR_API: ${AIRFLOW_CONN_SENSOR_API:-http://sensor-simulator:8000}
   AIRFLOW_CONN_SMARTCITY_TIMESCALEDB: ${AIRFLOW_CONN_SMARTCITY_TIMESCALEDB:-postgresql://smartcity_user:smartcity_password@timescaledb:5432/smartcity}
   AIRFLOW_CONN_MINIO_LOCAL: ${AIRFLOW_CONN_MINIO_LOCAL:-aws://minio_admin:minio_password_2026@?endpoint_url=http%3A%2F%2Fminio%3A9000&region_name=us-east-1}
-  _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-apache-airflow-providers-postgres apache-airflow-providers-amazon apache-airflow-providers-http httpx requests boto3 psycopg2-binary}
+  # Metriques Airflow vers StatsD exporter (activer avec docker-compose.monitoring.yaml)
+  AIRFLOW__METRICS__STATSD_ON: "False"
+  AIRFLOW__METRICS__STATSD_HOST: statsd-exporter
+  AIRFLOW__METRICS__STATSD_PORT: "9125"
+  AIRFLOW__METRICS__STATSD_PREFIX: airflow
+  _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-apache-airflow-providers-postgres apache-airflow-providers-amazon apache-airflow-providers-http httpx requests boto3 psycopg2-binary confluent-kafka==2.14.0}
 
 services:
 
