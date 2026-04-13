@@ -2,17 +2,28 @@
 # docker-compose.kafka.yaml — Overlay J2 : Kafka (Confluent Platform 8.1 KRaft)
 #
 # Usage :
-#   docker compose -f docker-compose.yaml -f docker-compose.kafka.yaml up -d
+#   docker compose -f docker-compose.yaml \
+#                  -f docker-compose.override.yaml \
+#                  -f docker-compose.kafka.yaml up -d
 #
-# Services ajoutés :
+# Services ajoutes :
 #   kafka          — Broker Confluent 8.1.2 (mode KRaft, sans Zookeeper)
 #   kafka-ui       — UI Kafka provectus (http://localhost:8090)
-#   kafka-exporter — Métriques Kafka pour Prometheus (port 9308)
+#   kafka-exporter — Metriques Kafka pour Prometheus (port 9308)
 #
-# Topics à créer après démarrage :
+# Topics crees automatiquement (KAFKA_AUTO_CREATE_TOPICS_ENABLE=true) :
+#   sensor-measurements  — lectures capteurs productes par le DAG producteur
+#
+# Pour creer le topic manuellement si besoin :
 #   docker compose exec kafka kafka-topics \
-#     --bootstrap-server kafka:9092 \
+#     --bootstrap-server localhost:9092 \
 #     --create --topic sensor-measurements --partitions 3 --replication-factor 1
+#
+# Connexion Airflow a creer (Admin -> Connections) :
+#   Conn Id  : kafka_bootstrap
+#   Conn Type: Generic
+#   Host     : kafka
+#   Port     : 9092
 # =============================================================================
 
 services:
@@ -44,16 +55,17 @@ services:
     volumes:
       - kafka-data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:9092", "--list"]
+      # localhost:9092 car le healthcheck s'execute DANS le conteneur kafka
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list > /dev/null 2>&1"]
       interval: 30s
       timeout: 10s
       retries: 10
-    networks:
-      - airflow-net
+      start_period: 45s
+    restart: always
 
   # ---------------------------------------------------------------------------
   # Kafka UI — Interface web provectus (http://localhost:8090)
-  # Permet de créer des topics, voir les messages, inspecter les consumer groups
+  # Permet de creer des topics, voir les messages, inspecter les consumer groups
   # ---------------------------------------------------------------------------
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -65,12 +77,11 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-    networks:
-      - airflow-net
+    restart: always
 
   # ---------------------------------------------------------------------------
-  # kafka-exporter — Métriques Kafka pour Prometheus (port 9308)
-  # Dashboard Grafana à importer : ID 7589 (Kafka Overview)
+  # kafka-exporter — Metriques Kafka pour Prometheus (port 9308)
+  # Dashboard Grafana a importer : ID 7589 (Kafka Overview)
   # ---------------------------------------------------------------------------
   kafka-exporter:
     image: danielqsj/kafka-exporter:v1.9.0
@@ -81,24 +92,34 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-    networks:
-      - airflow-net
+    restart: always
 
   # ---------------------------------------------------------------------------
-  # Mise à jour sensor-simulator pour publier aussi sur Kafka (J2)
-  # La variable d'env KAFKA_BOOTSTRAP_SERVERS active le mode streaming
+  # Injection de la variable KAFKA_BOOTSTRAP_SERVERS dans les services Airflow
+  # pour que les DAGs producteur/consommateur puissent joindre le broker.
   # ---------------------------------------------------------------------------
-  sensor-simulator:
+  airflow-apiserver:
     environment:
       KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
-      KAFKA_TOPIC: "sensor-measurements"
+
+  airflow-scheduler:
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+
+  airflow-dag-processor:
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+
+  airflow-worker:
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
     depends_on:
       kafka:
         condition: service_healthy
 
+  airflow-triggerer:
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+
 volumes:
   kafka-data:
-
-networks:
-  airflow-net:
-    driver: bridge
