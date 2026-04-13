@@ -116,6 +116,7 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - grafana-data:/var/lib/grafana
+      - ${AIRFLOW_PROJ_DIR:-.}/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
     restart: always
 
 volumes:
