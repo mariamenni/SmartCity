@@ -85,10 +85,10 @@ smartcity-airflow-groupe5/
 │   └── operators/
 ├── sql/
 │   ├── init/
-│   │   ├── 01-schema.sql
-│   │   ├── 02-seed.sql
-│   │   ├── 03-hypertable.sql
-│   │   └── 04-drop-fk.sql
+│   │   ├── 01-extension.sql      — activation extension TimescaleDB
+│   │   ├── 02-schema.sql          — tables dim_location, dim_sensor, fact_measurement, fact_alert
+│   │   ├── 03-seed.sql            — 10 localisations + 20 capteurs de référence
+│   │   └── 04-drop-fk.sql        — suppression FK pour idempotence DAG
 │   ├── ikhlas/
 │   ├── narcisse/
 │   ├── maria/
@@ -201,6 +201,35 @@ Résultats actuels : **70 passed, 1 skipped**
 - Les alertes sont écrites dans `fact_alert` lorsque les seuils sont dépassés (P4)
 - Le consumer minute traite un micro-batch sans dupliquer les données (P5)
 - MinIO `smartcity` contient les fichiers bruts (`raw/`) et batch (`batch/`)
+
+## État observé — 13 avril 2026
+
+### Airflow (http://localhost:8080)
+
+| DAG | Statut | Dernière exécution |
+|-----|--------|--------------------|
+| `smartcity_hook_health_check` | ✅ Succès | 2026-04-13 02:00:00 |
+| `smartcity_sensors_dims_refresh_daily` | ✅ Succès | 2026-04-13 12:27:17 |
+| `smartcity_measurements_batch_ingest` | ✅ Succès | 2026-04-13 12:29:26 |
+| `smartcity_alert_check_batch` | ✅ Succès | 2026-04-13 12:27:23 |
+| `smartcity_measurements_consumer_minutely` | ✅ Succès | 2026-04-13 12:29:00 |
+
+### Grafana (http://localhost:3000)
+
+| Indicateur | Valeur observée | Explication |
+|------------|----------------|-------------|
+| Capteurs actifs | **22** | 20 du seed SQL (`S-001`…`S-020`) + 2 capteurs API actifs (id=1 température, id=2 air_quality). Le capteur id=3 (traffic_flow) est en `maintenance` → `is_active=FALSE` |
+| Mesures 24 h | **1** | 1 seule mesure ingérée depuis le déclenchement manuel (capteur `"1"`, température ~22 °C) |
+| Alertes 24 h | **0** | Aucun seuil dépassé sur les données ingérées |
+| Panel Température | ✅ 1 point visible | Capteur `"1"` de l'API |
+| Panel Qualité de l'air | ⏳ No data | Normal — aucune mesure encore ingérée pour le capteur `"2"` (air_quality) |
+| Panel Trafic | ⏳ No data | Normal — capteur `"3"` en maintenance, données absentes de `fact_measurement` |
+| Alertes récentes | ⏳ No data | Normal — aucun seuil dépassé |
+
+> **Pourquoi "No data" est normal** : les panels time series affichent les données de `fact_measurement`
+> jointes sur `dim_sensor.type`. Avec un seul run manuel, seul le capteur 1 (température)
+> a une mesure. Les courbes air quality et trafic se rempliront automatiquement
+> au fil des runs planifiés (P5 toutes les minutes, P3 toutes les 15 min).
 
 ## Feuille de route — Jalon 2 (J2)
 
