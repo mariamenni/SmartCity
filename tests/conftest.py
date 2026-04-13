@@ -23,6 +23,11 @@ _PLUGINS = _PROJECT_ROOT / "plugins"
 if str(_PLUGINS) not in sys.path:
     sys.path.insert(0, str(_PLUGINS))
 
+# Ajout de dags/ pour l'import direct des modules DAG dans les tests
+_DAGS = _PROJECT_ROOT / "dags"
+if str(_DAGS) not in sys.path:
+    sys.path.insert(0, str(_DAGS))
+
 
 def _stub_airflow() -> None:
     """Injecte des faux modules airflow dans sys.modules si Airflow
