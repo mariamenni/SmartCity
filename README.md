@@ -75,6 +75,8 @@ SmartCity/
 │   ├── smartcity_measurements_consumer_minutely.py # Consumer  (1 min)
 │   ├── smartcity_alert_check_batch.py              # Détection d’anomalies
 │   └── smartcity_sensors_dims_refresh_daily.py     # Mise à jour dimensions (daily)
+│   └── smartcity_kafka_measurements_consumer.py    # Consumer  kafka
+│   └── smartcity_kafka_measurements_producer.py    # Producer  kafka
 │
 ├── plugins/                    
 │   ├── hooks/                 # Hooks personnalisés (ex: SensorAPIHook)
@@ -102,6 +104,8 @@ SmartCity/
 │   ├── test_smartcity_measurements_consumer_minutely.py
 │   ├── test_smartcity_alert_check_batch.py
 │   └── test_smartcity_sensors_dims_refresh_daily.py
+│   └── test_smartcity_kafka_measurements_consumer.py
+│   └── test_smartcity_kafka_measurements_producer.py
 │
 ├── docs/                      
 │   ├── 00-common/             # Documentation globale
@@ -127,6 +131,8 @@ SmartCity/
 3. Les DAGs Airflow traitent les données :
    - Batch → ingestion toutes les 15 minutes
    - Consumer → micro-batch toutes les 1 minute
+   - Producer Kafka → envoi des données capteurs
+   - Consumer Kafka → traitement temps réel
    - Dimensions → mise à jour quotidienne
    - Alerting → détection d’anomalies
 4. Les données sont :
@@ -159,7 +165,9 @@ SmartCity/
 | `smartcity_sensors_dims_refresh_daily` | `@daily` | Ikhlas | Mettre à jour les dimensions | Extraction API → transformation → upsert (`dim_sensor`, `dim_location`) | TimescaleDB |
 | `smartcity_measurements_batch_ingest` | `*/15 * * * *` | Narcisse | Ingestion batch des mesures | Appel API → filtrage → insertion idempotente | MinIO + TimescaleDB |
 | `smartcity_alert_check_batch` | `*/15 * * * *` | Maria | Détection des anomalies | Lecture `fact_measurement` → comparaison seuils → création alertes | TimescaleDB (`fact_alert`) |
-| `smartcity_measurements_consumer_minutely` | `*/1 * * * *` | Gills | Traitement quasi temps réel | Poll API/ → micro-batch → insertion | MinIO + TimescaleDB |
+| `smartcity_measurements_consumer_minutely` | `*/1 * * * *` | Gills | Traitement quasi temps réel | Poll API → micro-batch → insertion | MinIO + TimescaleDB |
+| `smartcity_kafka_measurements_producer` | `*/1 * * * *` | Gills | Envoi des données vers Kafka | Lecture API → production dans un topic Kafka | Kafka |
+| `smartcity_kafka_measurements_consumer` | `*/1 * * * *` | Gills | Consommation des données Kafka | Lecture du topic Kafka → transformation → insertion en base | TimescaleDB |
 
 ##  Contraintes techniques
 
@@ -194,6 +202,12 @@ SmartCity/
   - Batch < 15 min
   - Streaming < 2 min
 - Utilisation de TimescaleDB (hypertable) pour optimiser les requêtes temporelles
+- Streaming Kafka
+Le projet intègre désormais un pipeline de streaming basé sur Kafka :
+
+- Producer : envoie les données capteurs dans un topic Kafka
+- Consumer : consomme les messages et les insère dans TimescaleDB
+- Permet un traitement temps réel avec faible latence
 
 ## Screenshots & Résultats
 
