@@ -1,1 +1,0 @@
-# SmartCity hooks package.
