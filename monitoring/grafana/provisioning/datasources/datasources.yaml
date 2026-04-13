@@ -1,0 +1,22 @@
+# =============================================================================
+# datasources.yaml — Provisioning automatique de la datasource TimescaleDB
+# Grafana charge ce fichier au démarrage (via volume docker-compose)
+# =============================================================================
+
+apiVersion: 1
+
+datasources:
+  - name: SmartCity TimescaleDB
+    type: postgres
+    uid: smartcity-tsdb
+    url: timescaledb:5432
+    user: smartcity_user
+    secureJsonData:
+      password: smartcity_password
+    jsonData:
+      database: smartcity
+      sslmode: disable
+      # Active les fonctions TimescaleDB dans le query builder Grafana
+      timescaledb: true
+    isDefault: true
+    editable: true

@@ -14,19 +14,35 @@ class SensorAPIHook(HttpHook):
     def __init__(self, sensor_api_conn_id: str = default_conn_name, method: str = "GET") -> None:
         super().__init__(method=method, http_conn_id=sensor_api_conn_id)
 
-    def get_sensors(
-        self,
-        sensor_type: str | None = None,
-        status: str | None = None,
-        limit: int = 100,
-    ) -> Any:
-        # GET /api/v1/sensors?type=<sensor_type>&status=<status>&limit=<limit>
-        raise NotImplementedError("TODO Frederic: implement get_sensors()")
+    # ---- helpers ----
 
-    def get_measurements(self, sensor_id: int, limit: int = 100) -> Any:
-        # GET /api/v1/readings/{sensor_id}?limit=<limit>
-        raise NotImplementedError("TODO Frederic: implement get_measurements()")
+    def _api_get(self, endpoint: str, params: dict | None = None) -> Any:
+        response = self.run(endpoint, data=params or {}, headers={"Accept": "application/json"})
+        response.raise_for_status()
+        return response.json()
 
-    def get_metrics(self) -> Any:
-        # GET /api/v1/metrics
-        raise NotImplementedError("TODO Frederic: implement get_metrics()")
+    # ---- public API ----
+
+    def health_check(self) -> bool:
+        try:
+            data = self._api_get("/health")
+            return data.get("status") == "healthy"
+        except Exception:
+            return False
+
+    def get_sensors(self) -> list[dict]:
+        return self._api_get("/sensors")
+
+    def get_locations(self) -> list[dict]:
+        return self._api_get("/locations")
+
+    def get_measurements(self, start_ts: str | None = None, end_ts: str | None = None) -> list[dict]:
+        params: dict[str, str] = {}
+        if start_ts:
+            params["start"] = start_ts
+        if end_ts:
+            params["end"] = end_ts
+        return self._api_get("/measurements", params=params)
+
+    def get_latest_measurements(self) -> list[dict]:
+        return self._api_get("/measurements/latest")
