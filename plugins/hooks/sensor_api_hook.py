@@ -24,6 +24,7 @@ class SensorAPIHook(HttpHook):
     # ---- public API ----
 
     def health_check(self) -> bool:
+        """Retourne True si l'API répond avec status='healthy'."""
         try:
             data = self._api_get("/health")
             return data.get("status") == "healthy"
@@ -31,18 +32,17 @@ class SensorAPIHook(HttpHook):
             return False
 
     def get_sensors(self) -> list[dict]:
-        return self._api_get("/sensors")
+        """GET /api/v1/sensors — liste de tous les capteurs."""
+        return self._api_get("/api/v1/sensors")
 
-    def get_locations(self) -> list[dict]:
-        return self._api_get("/locations")
+    def get_readings(self, sensor_id: int | str) -> list[dict]:
+        """GET /api/v1/readings/{sensor_id} — lectures pour un capteur donné."""
+        return self._api_get(f"/api/v1/readings/{sensor_id}")
 
-    def get_measurements(self, start_ts: str | None = None, end_ts: str | None = None) -> list[dict]:
-        params: dict[str, str] = {}
-        if start_ts:
-            params["start"] = start_ts
-        if end_ts:
-            params["end"] = end_ts
-        return self._api_get("/measurements", params=params)
+    def get_metrics(self) -> dict:
+        """GET /api/v1/metrics — métriques agrégées de la ville."""
+        return self._api_get("/api/v1/metrics")
 
-    def get_latest_measurements(self) -> list[dict]:
-        return self._api_get("/measurements/latest")
+    def get_metrics_summary(self) -> dict:
+        """GET /api/v1/metrics/summary — résumé par type de capteur."""
+        return self._api_get("/api/v1/metrics/summary")

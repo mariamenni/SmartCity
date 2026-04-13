@@ -1,7 +1,7 @@
 """Tests unitaires — SensorAPIHook (Personne 1 — Frédéric).
 
-13 tests couvrant : health_check, get_sensors, get_locations,
-get_measurements, get_latest_measurements, et gestion d'erreur.
+13 tests couvrant : health_check, get_sensors, get_readings,
+get_metrics, get_metrics_summary, et gestion d'erreur.
 """
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ class TestHealthCheck:
 
 class TestGetSensors:
     def test_returns_list(self, hook):
-        data = [{"sensor_id": 1, "type": "temperature", "is_active": True}]
+        data = [{"id": 1, "type": "temperature", "status": "active", "latitude": 41.4, "longitude": 2.1}]
         with patch.object(hook, "run", return_value=_mock_response(data)):
             result = hook.get_sensors()
             assert result == data
@@ -60,52 +60,67 @@ class TestGetSensors:
         with patch.object(hook, "run", return_value=_mock_response([])):
             assert hook.get_sensors() == []
 
+    def test_calls_correct_endpoint(self, hook):
+        with patch.object(hook, "run", return_value=_mock_response([])) as m:
+            hook.get_sensors()
+            endpoint = m.call_args[0][0]
+            assert "/api/v1/sensors" in endpoint
 
-# ---- get_locations ----
 
-class TestGetLocations:
+# ---- get_readings ----
+
+class TestGetReadings:
     def test_returns_list(self, hook):
-        data = [{"location_id": 1, "district": "Centre", "zone_type": "residential"}]
+        data = [{"sensor_id": 1, "value": 22.5, "unit": "celsius", "timestamp": "2025-01-01T00:00:00"}]
         with patch.object(hook, "run", return_value=_mock_response(data)):
-            result = hook.get_locations()
+            result = hook.get_readings(1)
             assert result == data
 
     def test_empty_list(self, hook):
         with patch.object(hook, "run", return_value=_mock_response([])):
-            assert hook.get_locations() == []
+            assert hook.get_readings(99) == []
+
+    def test_calls_correct_endpoint(self, hook):
+        with patch.object(hook, "run", return_value=_mock_response([])) as m:
+            hook.get_readings(42)
+            endpoint = m.call_args[0][0]
+            assert "/api/v1/readings/42" in endpoint
+
+    def test_string_sensor_id(self, hook):
+        with patch.object(hook, "run", return_value=_mock_response([])) as m:
+            hook.get_readings("sensor-1")
+            endpoint = m.call_args[0][0]
+            assert "sensor-1" in endpoint
 
 
-# ---- get_measurements ----
+# ---- get_metrics ----
 
-class TestGetMeasurements:
-    def test_no_params(self, hook):
-        data = [{"sensor_id": 1, "type": "temperature", "value": 22.5, "unit": "°C"}]
-        with patch.object(hook, "run", return_value=_mock_response(data)) as m:
-            result = hook.get_measurements()
+class TestGetMetrics:
+    def test_returns_dict(self, hook):
+        data = {"city": "Barcelona", "total_sensors": 3, "active_sensors": 2}
+        with patch.object(hook, "run", return_value=_mock_response(data)):
+            result = hook.get_metrics()
             assert result == data
 
-    def test_with_start_ts(self, hook):
-        with patch.object(hook, "run", return_value=_mock_response([])) as m:
-            hook.get_measurements(start_ts="2025-01-01T00:00:00")
-            m.assert_called_once()
-            call_kwargs = m.call_args
-            data = call_kwargs[1].get("data", call_kwargs[0][1] if len(call_kwargs[0]) > 1 else {})
-            assert "start" in data
 
-    def test_with_both_params(self, hook):
-        with patch.object(hook, "run", return_value=_mock_response([])) as m:
-            hook.get_measurements(start_ts="2025-01-01", end_ts="2025-01-02")
-            m.assert_called_once()
+# ---- get_metrics_summary ----
 
-    def test_empty_result(self, hook):
-        with patch.object(hook, "run", return_value=_mock_response([])):
-            assert hook.get_measurements() == []
+class TestGetMetricsSummary:
+    def test_returns_dict(self, hook):
+        data = {"summary": {"temperature": {"total": 1, "active": 1}}, "total_sensors": 1}
+        with patch.object(hook, "run", return_value=_mock_response(data)):
+            result = hook.get_metrics_summary()
+            assert result == data
 
 
-# ---- get_latest_measurements ----
+# ---- error propagation ----
 
-class TestGetLatestMeasurements:
-    def test_returns_list(self, hook):
+class TestApiGetError:
+    def test_run_raises_propagates(self, hook):
+        with patch.object(hook, "run", side_effect=Exception("connection refused")):
+            with pytest.raises(Exception, match="connection refused"):
+                hook.get_sensors()
+
         data = [{"sensor_id": 1, "value": 20.0}]
         with patch.object(hook, "run", return_value=_mock_response(data)):
             assert hook.get_latest_measurements() == data
