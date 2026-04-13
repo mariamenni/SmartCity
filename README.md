@@ -208,11 +208,11 @@ Résultats actuels : **70 passed, 1 skipped**
 
 | DAG | Statut | Dernière exécution |
 |-----|--------|--------------------|
-| `smartcity_hook_health_check` | ✅ Succès | 2026-04-13 02:00:00 |
-| `smartcity_sensors_dims_refresh_daily` | ✅ Succès | 2026-04-13 12:27:17 |
-| `smartcity_measurements_batch_ingest` | ✅ Succès | 2026-04-13 12:29:26 |
-| `smartcity_alert_check_batch` | ✅ Succès | 2026-04-13 12:27:23 |
-| `smartcity_measurements_consumer_minutely` | ✅ Succès | 2026-04-13 12:29:00 |
+| `smartcity_hook_health_check` | OK Succès | 2026-04-13 02:00:00 |
+| `smartcity_sensors_dims_refresh_daily` | OK Succès | 2026-04-13 12:27:17 |
+| `smartcity_measurements_batch_ingest` | OK Succès | 2026-04-13 12:29:26 |
+| `smartcity_alert_check_batch` | OK Succès | 2026-04-13 12:27:23 |
+| `smartcity_measurements_consumer_minutely` | OK Succès | 2026-04-13 12:29:00 |
 
 ### Grafana (http://localhost:3000)
 
@@ -221,7 +221,7 @@ Résultats actuels : **70 passed, 1 skipped**
 | Capteurs actifs | **22** | 20 du seed SQL (`S-001`…`S-020`) + 2 capteurs API actifs (id=1 température, id=2 air_quality). Le capteur id=3 (traffic_flow) est en `maintenance` → `is_active=FALSE` |
 | Mesures 24 h | **1** | 1 seule mesure ingérée depuis le déclenchement manuel (capteur `"1"`, température ~22 °C) |
 | Alertes 24 h | **0** | Aucun seuil dépassé sur les données ingérées |
-| Panel Température | ✅ 1 point visible | Capteur `"1"` de l'API |
+| Panel Température | OK 1 point visible | Capteur `"1"` de l'API |
 | Panel Qualité de l'air | ⏳ No data | Normal — aucune mesure encore ingérée pour le capteur `"2"` (air_quality) |
 | Panel Trafic | ⏳ No data | Normal — capteur `"3"` en maintenance, données absentes de `fact_measurement` |
 | Alertes récentes | ⏳ No data | Normal — aucun seuil dépassé |

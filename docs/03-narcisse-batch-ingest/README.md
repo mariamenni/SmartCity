@@ -85,3 +85,12 @@ python -m pytest tests/narcisse/ -v
 |--------|---|-------|
 | `TestFilterValidRecords` | 9 | Champs manquants, value=0 valide, chaîne vide invalide, liste vide, mixte |
 | `TestSensorIdNormalization` | 2 | int→str, alias clé `timestamp`→`ts` |
+
+## Résultats de validation — 13 avril 2026
+
+| Élément | Statut | Détail |
+|--------|--------|--------|
+| Tests unitaires | OK 11 passés | `pytest tests/narcisse/ -v` |
+| DAG `smartcity_measurements_batch_ingest` | OK Succès | Dernière exécution : 2026-04-13 12:29:26 |
+| Fichier MinIO `batch/` | OK créé | `smartcity/batch/{run_ts}.json` visible dans MinIO console |
+| Lignes dans `fact_measurement` | OK | Insertions idempotentes vérifiées (`ON CONFLICT DO NOTHING`) |

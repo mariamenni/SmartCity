@@ -72,3 +72,13 @@ python -m pytest tests/gills/ -v
 | `TestPollApiLogic` | 3 | Stockage MinIO, skip capteur inactif, continue sur erreur individuelle |
 | `TestTransformLogic` | 7 | Enregistrement valide, champs manquants, valeur non-numérique, déduplication, latence, ts non parseable, batch vide |
 | `TestFlushLogic` | 3 | Insertion + compteur, batch vide → 0, fermeture connexion |
+
+## Résultats de validation — 13 avril 2026
+
+| Élément | Statut | Détail |
+|--------|--------|--------|
+| Tests unitaires | OK 13 passés | `pytest tests/gills/ -v` |
+| DAG `smartcity_measurements_consumer_minutely` | OK Succès | Dernière exécution : 2026-04-13 12:29:00 |
+| Fichiers MinIO `raw/` et `clean/` | OK créés | Archivage brut + nettoyé visible dans MinIO |
+| Courbe température Grafana | OK | Capteur `"1"` trace la courbe (~19–27 °C sur 24 h) |
+| Déduplication `(ts, sensor_id)` | OK | `ON CONFLICT DO NOTHING` vérifié sur re-run |

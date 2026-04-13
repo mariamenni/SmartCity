@@ -105,3 +105,13 @@ sensors = hook.get_sensors()                    # list[dict]
 readings = hook.get_readings(sensor_id=1)       # list[dict]
 ok = hook.health_check()                        # bool
 ```
+
+## Résultats de validation — 13 avril 2026
+
+| Élément | Statut | Détail |
+|--------|--------|--------|
+| Tests unitaires | OK 13 passés | `pytest tests/frederic/ -v` |
+| DAG `smartcity_hook_health_check` | OK Succès | Dernière exécution : 2026-04-13 02:00:00 |
+| `health_check()` | OK | API répond `{"status": "healthy", "sensors_count": 3}` |
+| `get_sensors()` | OK | 3 capteurs retournés (id 1, 2, 3) |
+| `get_readings(sensor_id)` | OK | Lecture OK pour capteur 1 (température) |

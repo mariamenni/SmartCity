@@ -90,3 +90,12 @@ python -m pytest tests/maria/ -v
 | `TestCheckViolation` | 13 | Normal / warning / critical pour temperature, air_quality, traffic_flow, noise_level, humidity, type inconnu |
 | `TestThresholds` | 3 | Structure THRESHOLDS : 2 valeurs par type, warning < critical, types attendus présents |
 | `TestDetectThresholdsLogic` | 5 | Aucune violation, 1 warning, 1 critical, mixte, type inconnu ignoré |
+
+## Résultats de validation — 13 avril 2026
+
+| Élément | Statut | Détail |
+|--------|--------|--------|
+| Tests unitaires | OK 21 passés | `pytest tests/maria/ -v` |
+| DAG `smartcity_alert_check_batch` | OK Succès | Dernière exécution : 2026-04-13 12:27:23 |
+| Alertes générées (données de démo) | OK 6 alertes | 2 warning + 2 critical température/air_quality, 1 warning + 1 critical traffic |
+| Tableau Grafana "Alertes récentes" | OK | 6 lignes avec coloration orange (warning) / rouge (critical) visibles |
