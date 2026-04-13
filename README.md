@@ -243,6 +243,12 @@ Le projet intègre désormais un pipeline de streaming basé sur Kafka :
 ### MinIO
 ![MinIO](images/minio_batch.png)
 
+### Kafka
+#### Topics
+![Topics](images/topics.png)
+
+#### Consumer
+![Consumer](images/consumer.png)
 
 ## Instructions de lancement
 
