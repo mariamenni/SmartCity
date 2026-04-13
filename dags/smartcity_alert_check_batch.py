@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime , timezone
 from airflow.sdk import dag, task
 from operators.threshold_alert_operator import ThresholdAlertOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
@@ -58,37 +58,36 @@ def smartcity_alert_check_batch():
     )
 
     # -------------------------
-    # OFFLINE DETECTION (OPTIMIZED)
+    # OFFLINE DETECTION 
     # -------------------------
     @task()
     def detect_offline_sensors() -> list[tuple]:
         pg = PostgresHook(postgres_conn_id="smartcity_timescaledb")
 
         sql = """
-            SELECT sensor_id
+            SELECT ds.sensor_id, MAX(fm.ts) as last_seen
             FROM dim_sensor ds
-            WHERE is_active = true
-            AND installed_date IS NOT NULL
-            AND NOT EXISTS (
-                SELECT 1
-                FROM fact_measurement fm
-                WHERE fm.sensor_id = ds.sensor_id
-                AND fm.ts > NOW() - INTERVAL '15 minutes'
-            )
+            LEFT JOIN fact_measurement fm
+                ON ds.sensor_id = fm.sensor_id
+            WHERE ds.is_active = true
+            GROUP BY ds.sensor_id
+            HAVING MAX(fm.ts) IS NULL
+                OR MAX(fm.ts) < NOW() - INTERVAL '15 minutes'
         """
 
         sensors = pg.get_records(sql)
 
         return [
             (
-                datetime.utcnow(),
+                datetime.now(timezone.utc),
                 s[0],
                 "critical",
-                0,
-                1,
+                0,   
+                0,   
             )
             for s in sensors
         ]
+
 
     # -------------------------
     # LOAD ALERTS (IDEMPOTENT)

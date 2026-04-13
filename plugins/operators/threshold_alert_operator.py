@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from airflow.models import BaseOperator
 from airflow.utils.context import Context
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class ThresholdAlertOperator(BaseOperator):
@@ -45,7 +45,7 @@ class ThresholdAlertOperator(BaseOperator):
             if severity:
                 alerts.append(
                     (
-                        datetime.utcnow(),
+                        datetime.now(timezone.utc),
                         row["sensor_id"],
                         severity,
                         value,
