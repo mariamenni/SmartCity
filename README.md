@@ -195,16 +195,6 @@ SmartCity/
   - Streaming < 2 min
 - Utilisation de TimescaleDB (hypertable) pour optimiser les requêtes temporelles
 
-## Comparatif Batch vs Streaming
-
-| Critère | Batch | Streaming |
-|--------|------|----------|
-| Latence | Élevée (~15 min) | Faible (~1 min) |
-| Complexité | Faible (implémentation simple) | Élevée (gestion Kafka, offsets, etc.) |
-| Coût | Faible | Élevé (infrastructure + maintenance) |
-| Cas d’usage | Reporting, analyses historiques | Monitoring temps réel, alerting |
-
-
 ## Screenshots & Résultats
 
 ### Airflow UI
