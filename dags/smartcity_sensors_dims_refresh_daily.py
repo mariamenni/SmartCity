@@ -1,3 +1,17 @@
+# =============================================================================
+# DAG  — Refresh des dimensions capteurs (P2 — Ikhlas)
+#
+# Ce DAG synchronise quotidiennement les dimensions depuis l'API :
+#   1. extract_from_api     → GET /api/v1/sensors, retourne la liste brute
+#   2. upsert_dimensions    → UPSERT dans dim_location + dim_sensor
+#
+# dim_location : une entrée par capteur (localisation GPS + nom extrait)
+# dim_sensor   : sensor_id = str(api_id) pour correspondre aux fact_measurement
+#                insérés par P5 (consumer minutely)
+#
+# Schedule : @daily
+# Connexions : sensor_api, smartcity_timescaledb
+# =============================================================================
 from __future__ import annotations
 
 from datetime import datetime
@@ -5,157 +19,110 @@ from datetime import datetime
 from airflow.sdk import dag, task
 
 
+def _extract_district(sensor_name: str) -> str:
+    """Extrait le nom du district depuis le nom du capteur ('Type - District')."""
+    parts = sensor_name.split(" - ", 1)
+    return parts[1].strip() if len(parts) == 2 else sensor_name.strip()
+
+
 @dag(
     dag_id="smartcity_sensors_dims_refresh_daily",
-    description="Refresh quotidien des dimensions dim_location et dim_sensor depuis l'API SmartCity",
+    description="P2 — Refresh quotidien des dimensions (dim_location + dim_sensor)",
     schedule="@daily",
     start_date=datetime(2025, 1, 1),
     catchup=False,
     max_active_runs=1,
-    tags=["smartcity", "dimensions", "batch", "j1"],
+    tags=["smartcity", "dimensions", "j1"],
 )
 def smartcity_sensors_dims_refresh_daily():
-    @task()
-    def extract_locations() -> list[dict]:
-        from hooks.sensor_api_hook import SensorAPIHook
-
-        hook = SensorAPIHook()
-        locations = hook.get_locations()
-
-        if not isinstance(locations, list):
-            raise ValueError("Format inattendu pour /locations")
-
-        print(f"{len(locations)} locations récupérées depuis l'API")
-        return locations
 
     @task()
-    def load_locations(locations: list[dict]) -> int:
-        from airflow.providers.postgres.hooks.postgres import PostgresHook
-
-        if not locations:
-            print("Aucune location à charger")
-            return 0
-
-        pg_hook = PostgresHook(postgres_conn_id="smartcity_timescaledb")
-        conn = pg_hook.get_conn()
-        cur = conn.cursor()
-
-        upsert_sql = """
-            INSERT INTO dim_location (
-                location_id,
-                district,
-                latitude,
-                longitude,
-                zone_type
-            )
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (location_id)
-            DO UPDATE SET
-                district = EXCLUDED.district,
-                latitude = EXCLUDED.latitude,
-                longitude = EXCLUDED.longitude,
-                zone_type = EXCLUDED.zone_type
-        """
-
-        rows = []
-        for loc in locations:
-            rows.append(
-                (
-                    int(loc["location_id"]),
-                    loc["district"],
-                    float(loc["latitude"]),
-                    float(loc["longitude"]),
-                    loc["zone_type"],
-                )
-            )
-
-        cur.executemany(upsert_sql, rows)
-        conn.commit()
-
-        cur.close()
-        conn.close()
-
-        print(f"{len(rows)} locations upsertées dans dim_location")
-        return len(rows)
-
-    @task()
-    def extract_sensors() -> list[dict]:
+    def extract_from_api() -> list[dict]:
+        """Récupère la liste complète des capteurs depuis l'API."""
         from hooks.sensor_api_hook import SensorAPIHook
 
         hook = SensorAPIHook()
         sensors = hook.get_sensors()
-
-        if not isinstance(sensors, list):
-            raise ValueError("Format inattendu pour /sensors")
-
-        print(f"{len(sensors)} capteurs récupérés depuis l'API")
+        print(f"extract_from_api: {len(sensors)} capteurs récupérés")
         return sensors
 
     @task()
-    def load_sensors(sensors: list[dict]) -> int:
-        from airflow.providers.postgres.hooks.postgres import PostgresHook
+    def upsert_dimensions(sensors: list[dict]) -> dict:
+        """Upsert dans dim_location et dim_sensor depuis les données API.
 
-        if not sensors:
-            print("Aucun capteur à charger")
-            return 0
-
-        pg_hook = PostgresHook(postgres_conn_id="smartcity_timescaledb")
-        conn = pg_hook.get_conn()
-        cur = conn.cursor()
-
-        upsert_sql = """
-            INSERT INTO dim_sensor (
-                sensor_id,
-                type,
-                location_id,
-                installed_date,
-                is_active
-            )
-            VALUES (%s, %s, %s, CURRENT_DATE, %s)
-            ON CONFLICT (sensor_id)
-            DO UPDATE SET
-                type = EXCLUDED.type,
-                location_id = EXCLUDED.location_id,
-                is_active = EXCLUDED.is_active
+        dim_location → une entrée par capteur (location_id = 'LOC-{id}')
+        dim_sensor   → sensor_id = str(id), correspondant aux enregistrements
+                       insérés dans fact_measurement par le consumer P5.
         """
+        import psycopg2
+        from airflow.hooks.base import BaseHook
 
-        rows = []
-        for sensor in sensors:
-            rows.append(
-                (
-                    sensor["sensor_id"],
-                    sensor["type"],
-                    int(sensor["location_id"]),
-                    bool(sensor["is_active"]),
-                )
-            )
+        conn_info = BaseHook.get_connection("smartcity_timescaledb")
+        conn = psycopg2.connect(
+            host=conn_info.host,
+            port=int(conn_info.port or 5432),
+            dbname=conn_info.schema,
+            user=conn_info.login,
+            password=conn_info.password,
+        )
 
-        cur.executemany(upsert_sql, rows)
-        conn.commit()
+        nb_loc = 0
+        nb_sensor = 0
 
-        cur.close()
-        conn.close()
+        try:
+            with conn:
+                with conn.cursor() as cur:
+                    for s in sensors:
+                        sensor_id   = str(s["id"])
+                        location_id = f"LOC-{sensor_id}"
+                        district    = _extract_district(s.get("name", sensor_id))
+                        lat         = float(s.get("latitude", 0))
+                        lon         = float(s.get("longitude", 0))
+                        is_active   = s.get("status", "active") == "active"
 
-        print(f"{len(rows)} capteurs upsertés dans dim_sensor")
-        return len(rows)
+                        # Upsert dim_location
+                        cur.execute(
+                            """
+                            INSERT INTO dim_location
+                                (location_id, district, latitude, longitude, zone_type)
+                            VALUES (%s, %s, %s, %s, %s)
+                            ON CONFLICT (location_id) DO UPDATE
+                                SET district  = EXCLUDED.district,
+                                    latitude  = EXCLUDED.latitude,
+                                    longitude = EXCLUDED.longitude
+                            """,
+                            (location_id, district, lat, lon, "urban"),
+                        )
+                        nb_loc += 1
 
-    @task()
-    def report(nb_locations: int, nb_sensors: int) -> None:
-        print("=" * 60)
-        print("RAPPORT — Refresh des dimensions SmartCity")
-        print("=" * 60)
-        print(f"dim_location : {nb_locations} lignes upsertées")
-        print(f"dim_sensor   : {nb_sensors} lignes upsertées")
-        print("Refresh terminé avec succès")
-        print("=" * 60)
+                        # Upsert dim_sensor
+                        cur.execute(
+                            """
+                            INSERT INTO dim_sensor
+                                (sensor_id, type, location_id, installed_date, is_active)
+                            VALUES (%s, %s, %s, %s, %s)
+                            ON CONFLICT (sensor_id) DO UPDATE
+                                SET type      = EXCLUDED.type,
+                                    is_active = EXCLUDED.is_active
+                            """,
+                            (
+                                sensor_id,
+                                s.get("type", "unknown"),
+                                location_id,
+                                s.get("created_at", datetime.utcnow().date()),
+                                is_active,
+                            ),
+                        )
+                        nb_sensor += 1
 
-    locations = extract_locations()
-    sensors = extract_sensors()
+            print(f"upsert_dimensions: {nb_loc} locations, {nb_sensor} capteurs upsertés")
+            return {"nb_locations": nb_loc, "nb_sensors": nb_sensor}
+        finally:
+            conn.close()
 
-    nb_locations = load_locations(locations)
-    nb_sensors = load_sensors(sensors)
-
-    report(nb_locations, nb_sensors)
+    sensors_data = extract_from_api()
+    upsert_dimensions(sensors_data)
 
 
 smartcity_sensors_dims_refresh_daily()
+

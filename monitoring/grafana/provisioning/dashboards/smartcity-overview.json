@@ -1,0 +1,322 @@
+{
+  "uid": "smartcity-overview",
+  "title": "SmartCity — Vue d'ensemble",
+  "tags": ["smartcity"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Capteurs actifs",
+      "description": "Nombre de capteurs avec is_active = true",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["last"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+          "rawSql": "SELECT COUNT(*)::int AS value FROM dim_sensor WHERE is_active = true",
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Mesures (24 h)",
+      "description": "Lignes insérées dans fact_measurement ces dernières 24 heures",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["last"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+          "rawSql": "SELECT COUNT(*)::int AS value FROM fact_measurement WHERE ts >= NOW() - INTERVAL '24 hours'",
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Alertes (24 h)",
+      "description": "Total des alertes déclenchées ces dernières 24 heures",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["last"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+          "rawSql": "SELECT COUNT(*)::int AS value FROM fact_alert WHERE ts >= NOW() - INTERVAL '24 hours'",
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Alertes critiques (24 h)",
+      "description": "Alertes avec severity = 'critical' ces dernières 24 heures",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["last"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+          "rawSql": "SELECT COUNT(*)::int AS value FROM fact_alert WHERE ts >= NOW() - INTERVAL '24 hours' AND severity = 'critical'",
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Température (°C)",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 4 },
+      "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 12,
+            "pointSize": 4,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+          "rawSql": "SELECT\n  time_bucket('5 minutes', fm.ts) AS \"time\",\n  fm.sensor_id AS metric,\n  AVG(fm.value) AS value\nFROM fact_measurement fm\nJOIN dim_sensor ds ON ds.sensor_id = fm.sensor_id\nWHERE ds.type = 'temperature'\n  AND $__timeFilter(fm.ts)\nGROUP BY 1, 2\nORDER BY 1",
+          "format": "time_series"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Qualité de l'air (indice AQI)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 4 },
+      "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 12,
+            "pointSize": 4,
+            "showPoints": "auto"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 3 },
+              { "color": "red", "value": 4 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+          "rawSql": "SELECT\n  time_bucket('5 minutes', fm.ts) AS \"time\",\n  fm.sensor_id AS metric,\n  AVG(fm.value) AS value\nFROM fact_measurement fm\nJOIN dim_sensor ds ON ds.sensor_id = fm.sensor_id\nWHERE ds.type = 'air_quality'\n  AND $__timeFilter(fm.ts)\nGROUP BY 1, 2\nORDER BY 1",
+          "format": "time_series"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Trafic (véh/min)",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 4 },
+      "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 12,
+            "pointSize": 4,
+            "showPoints": "auto"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 80 },
+              { "color": "red", "value": 95 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+          "rawSql": "SELECT\n  time_bucket('5 minutes', fm.ts) AS \"time\",\n  fm.sensor_id AS metric,\n  AVG(fm.value) AS value\nFROM fact_measurement fm\nJOIN dim_sensor ds ON ds.sensor_id = fm.sensor_id\nWHERE ds.type = 'traffic_flow'\n  AND $__timeFilter(fm.ts)\nGROUP BY 1, 2\nORDER BY 1",
+          "format": "time_series"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Alertes récentes",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Sévérité" },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": { "type": "color-background", "mode": "basic" }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "orange", "value": null },
+                    { "color": "red", "value": 1 }
+                  ]
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "warning":  { "text": "AVERTISSEMENT", "color": "orange", "index": 0 },
+                      "critical": { "text": "CRITIQUE",       "color": "red",    "index": 1 }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Horodatage", "desc": true }]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "uid": "smartcity-tsdb", "type": "postgres" },
+          "rawSql": "SELECT\n  fa.ts         AS \"Horodatage\",\n  fa.sensor_id  AS \"Capteur\",\n  ds.type       AS \"Type\",\n  dl.district   AS \"Quartier\",\n  fa.severity   AS \"Sévérité\",\n  fa.value      AS \"Valeur mesurée\",\n  fa.threshold  AS \"Seuil\"\nFROM fact_alert fa\nJOIN dim_sensor ds ON ds.sensor_id = fa.sensor_id\nLEFT JOIN dim_location dl ON dl.location_id = ds.location_id\nORDER BY fa.ts DESC\nLIMIT 50",
+          "format": "table"
+        }
+      ]
+    }
+  ]
+}

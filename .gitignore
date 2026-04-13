@@ -1,0 +1,15 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+logs/
+*.log
+.DS_Store
+Thumbs.db
+
+SMARTCITY/

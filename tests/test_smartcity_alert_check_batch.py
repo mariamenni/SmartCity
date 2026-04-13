@@ -1,113 +1,159 @@
-from airflow.models import DagBag
-from airflow.providers.postgres.hooks.postgres import PostgresHook
-from operators.threshold_alert_operator import ThresholdAlertOperator
+"""Tests unitaires — DAG alerting (P4 — Maria).
 
-DAG_ID = "smartcity_alert_check_batch"
+Tests couvrant :
+- _check_violation() : logique de détection de dépassement de seuil
+- THRESHOLDS : vérification de la cohérence des valeurs
+- Logique de construction des violations (detect_thresholds)
+"""
+from __future__ import annotations
 
+import pytest
 
-# =========================================================
-# 1. TEST : DAG LOAD
-# =========================================================
-def test_dag_load():
-    dagbag = DagBag(dag_folder="dags", include_examples=False)
-    dag = dagbag.get_dag(DAG_ID)
-
-    assert dag is not None, "DAG introuvable"
-    assert len(dag.tasks) > 0
-
-    task_ids = {t.task_id for t in dag.tasks}
-
-    assert "extract_measurements" in task_ids
-    assert "detect_offline_sensors" in task_ids
-    assert "report" in task_ids
+from smartcity_alert_check_batch import THRESHOLDS, _check_violation
 
 
-# =========================================================
-# 2. TEST : THRESHOLD LOGIC (UNIT TEST OPERATOR)
-# =========================================================
-def test_threshold_operator():
-    op = ThresholdAlertOperator(
-        task_id="test_threshold",
-        thresholds={
-            "noise_level": {"warning": 65, "critical": 80},
-            "air_quality_pm25": {"warning": 25, "critical": 50},
-        }
-    )
+# ---- _check_violation ----
 
-    fake_data = [
-        {"sensor_id": "S-001", "type": "noise_level", "value": 90},
-        {"sensor_id": "S-002", "type": "noise_level", "value": 70},
-        {"sensor_id": "S-003", "type": "air_quality_pm25", "value": 60},
-    ]
+class TestCheckViolation:
+    # --- température ---
+    def test_temperature_normal(self):
+        assert _check_violation("temperature", 25.0) is None
 
-    class FakeTI:
-        def xcom_pull(self, task_ids):
-            return fake_data
+    def test_temperature_warning(self):
+        result = _check_violation("temperature", 36.0)
+        assert result is not None
+        severity, threshold = result
+        assert severity == "warning"
+        assert threshold == 35.0
 
-    context = {"ti": FakeTI()}
+    def test_temperature_critical(self):
+        result = _check_violation("temperature", 41.0)
+        assert result is not None
+        severity, threshold = result
+        assert severity == "critical"
+        assert threshold == 40.0
 
-    alerts = op.execute(context)
+    def test_temperature_exactly_at_warning(self):
+        result = _check_violation("temperature", 35.0)
+        assert result is not None
+        assert result[0] == "warning"
 
-    assert len(alerts) == 3
-    assert alerts[0][2] == "critical"
-    assert alerts[1][2] == "warning"
-    assert alerts[2][2] == "critical"
+    def test_temperature_exactly_at_critical(self):
+        result = _check_violation("temperature", 40.0)
+        assert result is not None
+        assert result[0] == "critical"
+
+    # --- air_quality ---
+    def test_air_quality_normal(self):
+        assert _check_violation("air_quality", 1.5) is None
+
+    def test_air_quality_warning(self):
+        result = _check_violation("air_quality", 3.5)
+        assert result is not None
+        assert result[0] == "warning"
+
+    def test_air_quality_critical(self):
+        result = _check_violation("air_quality", 4.5)
+        assert result is not None
+        assert result[0] == "critical"
+
+    # --- type inconnu ---
+    def test_unknown_type_returns_none(self):
+        assert _check_violation("unknown_sensor_type", 9999.0) is None
+
+    def test_empty_type_returns_none(self):
+        assert _check_violation("", 100.0) is None
+
+    # --- autres types ---
+    def test_traffic_flow_critical(self):
+        result = _check_violation("traffic_flow", 96.0)
+        assert result is not None
+        assert result[0] == "critical"
+
+    def test_noise_level_warning(self):
+        result = _check_violation("noise_level", 72.0)
+        assert result is not None
+        assert result[0] == "warning"
+
+    def test_humidity_normal(self):
+        assert _check_violation("humidity", 60.0) is None
 
 
-# =========================================================
-# 3. TEST : OFFLINE LOGIC
-# =========================================================
-def test_offline_logic_simple():
-    now = "2026-04-13T10:00:00Z"
+# ---- THRESHOLDS cohérence ----
 
-    # capteur offline simulé
-    sensors_offline = [
-        ("S-999", "2026-04-13T09:30:00Z")
-    ]
+class TestThresholds:
+    def test_all_types_have_two_thresholds(self):
+        for sensor_type, thresholds in THRESHOLDS.items():
+            assert len(thresholds) == 2, f"{sensor_type} doit avoir (warning, critical)"
 
-    alerts = [
-        (now, s[0], "critical", 0, 0)
-        for s in sensors_offline
-    ]
+    def test_warning_below_critical(self):
+        for sensor_type, (warn, crit) in THRESHOLDS.items():
+            assert warn < crit, f"{sensor_type}: warning doit être < critical"
 
-    assert alerts[0][1] == "S-999"
-    assert alerts[0][2] == "critical"
+    def test_expected_types_present(self):
+        expected = {"temperature", "air_quality", "traffic_flow", "humidity", "noise_level"}
+        assert expected.issubset(THRESHOLDS.keys())
 
 
-# =========================================================
-# 4. TEST : DB ALERT GENERATION 
-# =========================================================
-def test_alerts_in_db():
-    pg = PostgresHook(postgres_conn_id="smartcity_timescaledb")
-    conn = pg.get_conn()
-    cur = conn.cursor()
+# ---- Logique detect_thresholds (simulation) ----
 
-    # reset
-    cur.execute("DELETE FROM fact_alert;")
-    conn.commit()
+class TestDetectThresholdsLogic:
+    def _run_detect(self, measurements: list[dict]) -> list[dict]:
+        """Simule la logique de detect_thresholds."""
+        violations = []
+        for m in measurements:
+            result = _check_violation(m.get("type", "unknown"), m["value"])
+            if result is None:
+                continue
+            severity, threshold = result
+            violations.append({
+                "ts":        m["ts"],
+                "sensor_id": m["sensor_id"],
+                "severity":  severity,
+                "value":     m["value"],
+                "threshold": threshold,
+            })
+        return violations
 
-    # insert fake alerts
-    cur.execute("""
-        INSERT INTO fact_alert (ts, sensor_id, severity, value, threshold)
-        VALUES
-        (NOW(), 'S-001', 'critical', 80, 50),
-        (NOW(), 'S-002', 'warning', 70, 65),
-        (NOW(), 'S-003', 'critical', 250, 200);
-    """)
-    conn.commit()
+    def test_no_violations(self):
+        measurements = [
+            {"ts": "2025-01-01T00:00:00", "sensor_id": "1", "type": "temperature", "value": 20.0, "unit": "celsius"},
+        ]
+        assert self._run_detect(measurements) == []
 
-    # verify
-    cur.execute("SELECT COUNT(*) FROM fact_alert;")
-    count = cur.fetchone()[0]
+    def test_one_warning(self):
+        measurements = [
+            {"ts": "2025-01-01T00:00:00", "sensor_id": "1", "type": "temperature", "value": 37.0, "unit": "celsius"},
+        ]
+        violations = self._run_detect(measurements)
+        assert len(violations) == 1
+        assert violations[0]["severity"] == "warning"
+        assert violations[0]["sensor_id"] == "1"
 
-    assert count == 3
+    def test_one_critical(self):
+        measurements = [
+            {"ts": "2025-01-01T00:00:00", "sensor_id": "2", "type": "air_quality", "value": 4.5, "unit": "index"},
+        ]
+        violations = self._run_detect(measurements)
+        assert len(violations) == 1
+        assert violations[0]["severity"] == "critical"
 
-    cur.execute("SELECT sensor_id FROM fact_alert;")
-    sensors = [r[0] for r in cur.fetchall()]
+    def test_mixed_measurements(self):
+        measurements = [
+            {"ts": "T1", "sensor_id": "1", "type": "temperature", "value": 20.0, "unit": "c"},   # OK
+            {"ts": "T2", "sensor_id": "2", "type": "temperature", "value": 38.0, "unit": "c"},   # warning
+            {"ts": "T3", "sensor_id": "3", "type": "air_quality",  "value": 4.2, "unit": "idx"}, # critical
+            {"ts": "T4", "sensor_id": "4", "type": "humidity",     "value": 50.0, "unit": "%"},  # OK
+        ]
+        violations = self._run_detect(measurements)
+        assert len(violations) == 2
+        severities = {v["severity"] for v in violations}
+        assert "warning" in severities
+        assert "critical" in severities
 
-    assert "S-001" in sensors
-    assert "S-002" in sensors
-    assert "S-003" in sensors
+    def test_unknown_type_ignored(self):
+        measurements = [
+            {"ts": "T1", "sensor_id": "1", "type": "unknown_type", "value": 9999.0, "unit": "x"},
+        ]
+        assert self._run_detect(measurements) == []
 
-    cur.close()
-    conn.close()

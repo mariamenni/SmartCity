@@ -1,148 +1,165 @@
-"""
-DAG : smartcity_measurements_batch_ingest
-Responsable : Narcisse Cabrel TSAFACK FOUEGAP
-
-Rôle : Ingestion batch des mesures IoT toutes les 15 minutes.
-
-CE QUE CE DAG FAIT (dans l'ordre)
-  1. extract_measurements
-       -> appelle SensorAPIHook.get_measurements(since=now-15min)
-       -> récupère toutes les mesures de la fenêtre glissante
-       -> retourne une list[dict] via XCom
-
-  2a. stage_raw  (en parallèle avec 2b)
-       -> archive le JSON brut dans MinIO
-       -> bucket: smartcity-raw / clé: measurements/YYYY/MM/DD/HHMMSS.json
-
-  2b. load_timescaledb  (en parallèle avec 2a)
-       -> INSERT dans fact_measurement avec ON CONFLICT DO NOTHING
-       -> idempotence garantie par PRIMARY KEY (ts, sensor_id)
-       -> retourne le nombre de lignes réellement insérées
-
-IDEMPOTENCE
-  Rejouer le même run donne le même résultat en base.
-  Mécanisme : PRIMARY KEY (ts, sensor_id) sur fact_measurement
-              + ON CONFLICT (ts, sensor_id) DO NOTHING
-
-CONNEXIONS AIRFLOW REQUISES
-  sensor_api             -> http://sensor-simulator:5000
-  smartcity_timescaledb  -> postgresql://smartcity_user:...@timescaledb:5432/smartcity
-  minio_local            -> aws://minio_admin:...@?endpoint_url=http://minio:9000
-"""
+# =============================================================================
+# DAG  — Batch ingest des mesures par fenêtre 15 min (P3 — Narcisse)
+#
+# Ce DAG collecte toutes les mesures sur une fenêtre glissante de 15 minutes,
+# les stocke brutes dans MinIO, puis les charge dans TimescaleDB.
+#
+#   1. extract_measurements → poll API (tous capteurs actifs), range min/max ts
+#   2. stage_raw            → sérialise dans MinIO batch/{run_ts}.json
+#   3. load_timescaledb     → INSERT … ON CONFLICT DO NOTHING (idempotent)
+#
+# Différence avec P5 (consumer minutely) :
+#   P5 s'exécute chaque minute et insère les lectures en temps réel.
+#   P3 s'exécute toutes les 15 minutes et joue le rôle de filet de sécurité :
+#   si P5 manque un cycle la mesure sera tout de même chargée par P3.
+#   ON CONFLICT DO NOTHING garantit l'absence de doublons.
+#
+# Schedule : */15 * * * *
+# Connexions : sensor_api, minio_local, smartcity_timescaledb
+# =============================================================================
 from __future__ import annotations
 
 import json
-import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from airflow.sdk import dag, task
-from airflow.providers.postgres.hooks.postgres import PostgresHook
 
-log = logging.getLogger(__name__)
+MINIO_BUCKET = "smartcity"
 
-SENSOR_API_CONN_ID = "sensor_api"
-TIMESCALE_CONN_ID  = "smartcity_timescaledb"
-MINIO_CONN_ID      = "minio_local"
-MINIO_BUCKET       = "smartcity-raw"
-WINDOW_MINUTES     = 15
+
+def _s3_client():
+    import boto3
+    from airflow.hooks.base import BaseHook
+
+    conn = BaseHook.get_connection("minio_local")
+    extra = json.loads(conn.extra) if conn.extra else {}
+    return boto3.client(
+        "s3",
+        aws_access_key_id=conn.login,
+        aws_secret_access_key=conn.password,
+        endpoint_url=extra.get("endpoint_url", "http://minio:9000"),
+        region_name=extra.get("region_name", "us-east-1"),
+    )
+
+
+def _ensure_bucket(s3, bucket: str) -> None:
+    try:
+        s3.head_bucket(Bucket=bucket)
+    except Exception:
+        s3.create_bucket(Bucket=bucket)
+
+
+def _filter_valid_records(records: list[dict]) -> list[dict]:
+    """Filtre les enregistrements ayant les champs obligatoires ts, sensor_id, value, unit."""
+    return [
+        r for r in records
+        if r.get("ts") and r.get("sensor_id") and r.get("value") is not None and r.get("unit")
+    ]
 
 
 @dag(
     dag_id="smartcity_measurements_batch_ingest",
+    description="P3 — Batch ingest fenêtre 15 min : poll API → MinIO → TimescaleDB",
     schedule="*/15 * * * *",
     start_date=datetime(2025, 1, 1),
     catchup=False,
     max_active_runs=1,
     tags=["smartcity", "batch", "j1"],
-    doc_md=__doc__,
 )
 def smartcity_measurements_batch_ingest():
 
-    #Task 1 : Extraire les mesures depuis l'API 
     @task()
     def extract_measurements() -> list[dict]:
+        """Poll l'API pour récupérer les lectures de tous les capteurs actifs."""
         from hooks.sensor_api_hook import SensorAPIHook
 
-        now   = datetime.now(tz=timezone.utc)
-        since = (now - timedelta(minutes=WINDOW_MINUTES)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        hook = SensorAPIHook()
+        sensors = hook.get_sensors()
+        active = [s for s in sensors if s.get("status", "active") == "active"]
 
-        log.info("Fenêtre d'extraction : [%s → maintenant]", since)
+        all_readings: list[dict] = []
+        for sensor in active:
+            sensor_id = sensor["id"]
+            try:
+                readings = hook.get_readings(sensor_id)
+                for r in readings:
+                    all_readings.append({
+                        "ts":        r.get("timestamp") or r.get("ts") or r.get("time"),
+                        "sensor_id": str(r.get("sensor_id", sensor_id)),
+                        "value":     float(r["value"]),
+                        "unit":      str(r.get("unit", "")),
+                    })
+            except Exception as exc:
+                print(f"[WARN] Readings introuvables pour sensor_id={sensor_id}: {exc}")
 
-        hook         = SensorAPIHook(sensor_api_conn_id=SENSOR_API_CONN_ID)
-        measurements = hook.get_measurements(since=since)
+        print(f"extract_measurements: {len(all_readings)} lectures ({len(active)} capteurs actifs)")
+        return all_readings
 
-        log.info("Mesures extraites : %d", len(measurements))
-        return measurements
-
-    #Task 2a : Archiver le brut dans MinIO 
     @task()
-    def stage_raw(measurements: list[dict]) -> str:
-        if not measurements:
-            log.info("Aucune mesure → rien à archiver dans MinIO.")
-            return ""
+    def stage_raw(readings: list[dict]) -> str:
+        """Sérialise le batch brut dans MinIO sous batch/{run_ts}.json."""
+        from airflow.sdk import get_current_context
 
-        from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+        ctx = get_current_context()
+        run_ts = ctx["logical_date"].strftime("%Y-%m-%dT%H-%M-%S")
 
-        s3  = S3Hook(aws_conn_id=MINIO_CONN_ID)
-        now = datetime.now(tz=timezone.utc)
-        key = f"measurements/{now.strftime('%Y/%m/%d/%H%M%S')}.json"
-
-        s3.load_string(
-            string_data=json.dumps(measurements, ensure_ascii=False),
-            key=key,
-            bucket_name=MINIO_BUCKET,
-            replace=True,
+        s3 = _s3_client()
+        _ensure_bucket(s3, MINIO_BUCKET)
+        key = f"batch/{run_ts}.json"
+        s3.put_object(
+            Bucket=MINIO_BUCKET,
+            Key=key,
+            Body=json.dumps(readings).encode("utf-8"),
+            ContentType="application/json",
         )
+        print(f"stage_raw: {len(readings)} lectures → MinIO {key}")
+        return key
 
-        path = f"s3://{MINIO_BUCKET}/{key}"
-        log.info("Brut archivé → %s (%d mesures)", path, len(measurements))
-        return path
-
-    #Task 2b : Charger dans TimescaleDB 
     @task()
-    def load_timescaledb(measurements: list[dict]) -> int:
-        if not measurements:
-            log.info("Aucune mesure → rien à charger dans TimescaleDB.")
+    def load_timescaledb(batch_key: str) -> int:
+        """Charge le batch depuis MinIO vers fact_measurement (idempotent)."""
+        import psycopg2
+        from airflow.hooks.base import BaseHook
+
+        s3 = _s3_client()
+        obj = s3.get_object(Bucket=MINIO_BUCKET, Key=batch_key)
+        records: list[dict] = json.loads(obj["Body"].read().decode("utf-8"))
+
+        # Filtre les enregistrements incomplets
+        valid = _filter_valid_records(records)
+
+        if not valid:
+            print("load_timescaledb: aucune mesure valide dans le batch")
             return 0
 
-        hook = PostgresHook(postgres_conn_id=TIMESCALE_CONN_ID)
-
-        rows = [
-            (m["ts"], m["sensor_id"], m["value"], m["unit"])
-            for m in measurements
-            if "ts" in m and "sensor_id" in m
-        ]
-
-        if not rows:
-            log.warning("Toutes les mesures sont malformées (ts ou sensor_id manquants).")
-            return 0
-
-        sql = """
-            INSERT INTO fact_measurement (ts, sensor_id, value, unit)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (ts, sensor_id) DO NOTHING
-        """
-
-        conn   = hook.get_conn()
-        cursor = conn.cursor()
+        conn_info = BaseHook.get_connection("smartcity_timescaledb")
+        conn = psycopg2.connect(
+            host=conn_info.host,
+            port=int(conn_info.port or 5432),
+            dbname=conn_info.schema,
+            user=conn_info.login,
+            password=conn_info.password,
+        )
         try:
-            cursor.executemany(sql, rows)
-            conn.commit()
-            inserted = cursor.rowcount
+            with conn:
+                with conn.cursor() as cur:
+                    cur.executemany(
+                        """
+                        INSERT INTO fact_measurement (ts, sensor_id, value, unit)
+                        VALUES (%(ts)s, %(sensor_id)s, %(value)s, %(unit)s)
+                        ON CONFLICT (ts, sensor_id) DO NOTHING
+                        """,
+                        valid,
+                    )
+            print(f"load_timescaledb: {len(valid)} mesures insérées (ON CONFLICT DO NOTHING)")
+            return len(valid)
         finally:
-            cursor.close()
             conn.close()
 
-        log.info(
-            "TimescaleDB : %d/%d lignes insérées (reste = conflits ignorés)",
-            inserted, len(rows),
-        )
-        return inserted
-
-    #Pipeline : extract -> (stage_raw ∥ load_timescaledb) 
-    measurements = extract_measurements()
-    stage_raw(measurements)
-    load_timescaledb(measurements)
+    readings   = extract_measurements()
+    batch_key  = stage_raw(readings)
+    load_timescaledb(batch_key)
 
 
 smartcity_measurements_batch_ingest()
+
