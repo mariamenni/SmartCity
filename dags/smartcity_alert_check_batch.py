@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime , timezone
 from airflow.sdk import dag, task
 from operators.threshold_alert_operator import ThresholdAlertOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
@@ -71,7 +71,7 @@ def smartcity_alert_check_batch():
                 ON ds.sensor_id = fm.sensor_id
             WHERE ds.is_active = true
             GROUP BY ds.sensor_id
-            HAVING MAX(fm.ts) IS NOT NULL
+            HAVING MAX(fm.ts) IS NULL
                 OR MAX(fm.ts) < NOW() - INTERVAL '15 minutes'
         """
 
